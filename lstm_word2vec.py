@@ -33,7 +33,7 @@ reload(sys)
 sys.setdefaultencoding('utf-8')
 
 ########################################
-## set directories and parameters
+## set directories and parameters ##
 ########################################
 BASE_DIR = '../input/'
 EMBEDDING_FILE = BASE_DIR + 'GoogleNews-vectors-negative300.bin'
