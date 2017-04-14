@@ -138,40 +138,58 @@ def text_to_wordlist(text, remove_stopwords=False, stem_words=False):
     # Return a list of words
     return(text)
 
-#texts_1 = [] 
-#texts_2 = []
-#labels = []
-#with codecs.open(TRAIN_DATA_FILE, encoding='utf-8') as f:
-#    reader = csv.reader(f, delimiter=',')
-#    header = next(reader)
-#    for values in reader:
-#        texts_1.append(text_to_wordlist(values[3]))
-#        texts_2.append(text_to_wordlist(values[4]))
-#        labels.append(int(values[5]))
-#print('Found %s texts in train.csv' % len(texts_1))
+texts_1 = [] 
+texts_2 = []
+labels = []
+with codecs.open(TRAIN_DATA_FILE, encoding='utf-8') as f:
+    reader = csv.reader(f, delimiter=',')
+    header = next(reader)
+    for values in reader:
+        texts_1.append(text_to_wordlist(values[3]))
+        texts_2.append(text_to_wordlist(values[4]))
+        if int(values[0])%1000==0:
+            print ("Already processed %d train files!!!"%(int(values[0])))
+        labels.append(int(values[5]))
+print('Found %s texts in train.csv' % len(texts_1))
 
-#test_texts_1 = []
-#test_texts_2 = []
-#test_ids = []
-#with codecs.open(TEST_DATA_FILE, encoding='utf-8') as f:
-#    reader = csv.reader(f, delimiter=',')
-#    header = next(reader)
-#    for values in reader:
-#        test_texts_1.append(text_to_wordlist(values[1]))
-#        test_texts_2.append(text_to_wordlist(values[2]))
-#        test_ids.append(values[0])
-#print('Found %s texts in test.csv' % len(test_texts_1))
-#
+test_texts_1 = []
+test_texts_2 = []
+test_ids = []
+with codecs.open(TEST_DATA_FILE, encoding='utf-8') as f:
+    reader = csv.reader(f, delimiter=',')
+    header = next(reader)
+    for values in reader:
+        test_texts_1.append(text_to_wordlist(values[1]))
+        test_texts_2.append(text_to_wordlist(values[2]))
+        if int(values[0])%1000==0:
+            print ("Already processed %d test files!!!"%(int(values[0])))
+        test_ids.append(values[0])
+print('Found %s texts in test.csv' % len(test_texts_1))
+
 train = pd.read_csv(TRAIN_DATA_FILE)
-test = pd.read_csv(TRAIN_DATA_FILE)
+test = pd.read_csv(TEST_DATA_FILE)
+train["question1"]=texts_1
+train["question2"]=texts_2
+
+test["question1"]=test_texts_1
+test["question2"]=test_texts_2
 #
-#tfidf = TfidfVectorizer(stop_words='english', ngram_range=(1, 1))
-##cvect = CountVectorizer(stop_words='english', ngram_range=(1, 1))
-#
-#tfidf_txt = pd.Series(texts_1 + texts_2 + test_texts_1 + test_texts_2).astype(str)
-#tfidf.fit_transform(tfidf_txt)
-##cvect.fit_transform(tfidf_txt)
-#del tfidf_txt,test_texts_1,test_texts_2,texts_1,texts_2
+tfidf = TfidfVectorizer(stop_words='english', ngram_range=(1, 1))
+#cvect = CountVectorizer(stop_words='english', ngram_range=(1, 1))
+tfidf_txt = pd.Series(texts_1 + texts_2 + test_texts_1 + test_texts_2).astype(str)
+tfidf.fit_transform(tfidf_txt)
+#cvect.fit_transform(tfidf_txt)
+del tfidf_txt,test_texts_1,test_texts_2,texts_1,texts_2
+
+a = 0.165 / 0.37
+b = (1 - 0.165) / (1 - 0.37)
+def kappa(preds, y):
+    score = []
+    for pp,yy in zip(preds, y.get_label()):
+        score.append(a * yy * np.log (pp) + b * (1 - yy) * np.log(1-pp))
+    score = -np.sum(score) / len(score)
+
+    return 'kappa', float(score)
 
 def diff_ratios(st1, st2):
     seq = difflib.SequenceMatcher()
@@ -196,12 +214,15 @@ def word_match_share(row):
     
 def word_match_begin_end(row):
     R=-1
+    try:
     
-    q1word_start = str(row['question1']).lower().split()[0]
-    q2word_start = str(row['question2']).lower().split()[0]
+        q1word_start = str(row['question1']).lower().split()[0]
+        q2word_start = str(row['question2']).lower().split()[0]
     
-    q1word_end = str(row['question1']).lower().split()[-1]
-    q2word_end = str(row['question2']).lower().split()[-1]
+        q1word_end = str(row['question1']).lower().split()[-1]
+        q2word_end = str(row['question2']).lower().split()[-1]
+    except:
+        return 1000
     
     #print("q1 strat,q2 strat,q1 end,q2 end",q1word_start,q2word_start,q1word_end,q2word_end)
     
@@ -242,13 +263,18 @@ def get_features(df_features):
     print('word match...')
     df_features['z_word_match'] = df_features.apply(word_match_share, axis=1, raw=True)
     df_features['magic_feature'] = df_features.apply(word_match_begin_end, axis=1, raw=True)
-    print('tfidf...')
-#    df_features['z_tfidf_sum1'] = df_features.question1.map(lambda x: np.sum(tfidf.transform([str(x)]).data))
-#    df_features['z_tfidf_sum2'] = df_features.question2.map(lambda x: np.sum(tfidf.transform([str(x)]).data))
-#    df_features['z_tfidf_mean1'] = df_features.question1.map(lambda x: np.mean(tfidf.transform([str(x)]).data))
-#    df_features['z_tfidf_mean2'] = df_features.question2.map(lambda x: np.mean(tfidf.transform([str(x)]).data))
-#    df_features['z_tfidf_len1'] = df_features.question1.map(lambda x: len(tfidf.transform([str(x)]).data))
-#    df_features['z_tfidf_len2'] = df_features.question2.map(lambda x: len(tfidf.transform([str(x)]).data))
+    print('tfidf...z_tfidf_sum1')
+    df_features['z_tfidf_sum1'] = df_features.question1.map(lambda x: np.sum(tfidf.transform([str(x)]).data))
+    print('tfidf...z_tfidf_sum2')
+    df_features['z_tfidf_sum2'] = df_features.question2.map(lambda x: np.sum(tfidf.transform([str(x)]).data))
+    print('tfidf...z_tfidf_mean1')
+    df_features['z_tfidf_mean1'] = df_features.question1.map(lambda x: np.mean(tfidf.transform([str(x)]).data))
+    print('tfidf...z_tfidf_mean2')
+    df_features['z_tfidf_mean2'] = df_features.question2.map(lambda x: np.mean(tfidf.transform([str(x)]).data))
+    print('tfidf...z_tfidf_len1')
+    df_features['z_tfidf_len1'] = df_features.question1.map(lambda x: len(tfidf.transform([str(x)]).data))
+    print('tfidf...z_tfidf_len2')
+    df_features['z_tfidf_len2'] = df_features.question2.map(lambda x: len(tfidf.transform([str(x)]).data))
     return df_features.fillna(0.0)
 
 #train['magic_feature'] = train.apply(word_match_begin_end, axis=1, raw=True)
@@ -256,21 +282,21 @@ train = get_features(train)
 train_features = pd.read_csv("C:\\Quora\\train_features.csv")
 train_features.drop(['question1','question2'],axis=1,inplace=True)
 train = pd.concat([train,train_features], axis=1)
-#train.to_csv('train.csv', index=False)
+train.to_csv('train_XGB.csv', index=False)
 
 
 
 col = [c for c in train.columns if c[:1]=='z']
-
-pos_train = train[train['is_duplicate'] == 1]
-neg_train = train[train['is_duplicate'] == 0]
-p = 0.165
-scale = ((len(pos_train) / (len(pos_train) + len(neg_train))) / p) - 1
-while scale > 1:
-    neg_train = pd.concat([neg_train, neg_train])
-    scale -=1
-neg_train = pd.concat([neg_train, neg_train[:int(scale * len(neg_train))]])
-train = pd.concat([pos_train, neg_train])
+#
+#pos_train = train[train['is_duplicate'] == 1]
+#neg_train = train[train['is_duplicate'] == 0]
+#p = 0.165
+#scale = ((len(pos_train) / (len(pos_train) + len(neg_train))) / p) - 1
+#while scale > 1:
+#    neg_train = pd.concat([neg_train, neg_train])
+#    scale -=1
+#neg_train = pd.concat([neg_train, neg_train[:int(scale * len(neg_train))]])
+#train = pd.concat([pos_train, neg_train])
 
 x_train, x_valid, y_train, y_valid = train_test_split(train[col], train['is_duplicate'], test_size=0.2, random_state=0)
 
@@ -288,14 +314,15 @@ params["seed"] = 1632
 d_train = xgb.DMatrix(x_train, label=y_train)
 d_valid = xgb.DMatrix(x_valid, label=y_valid)
 watchlist = [(d_train, 'train'), (d_valid, 'valid')]
-bst = xgb.train(params, d_train, 500000, watchlist, early_stopping_rounds=500, verbose_eval=100) #change to higher #s
+bst = xgb.train(params, d_train, 500000, watchlist, early_stopping_rounds=500, verbose_eval=100,feval = kappa) #change to higher #s
 print(log_loss(train.is_duplicate, bst.predict(xgb.DMatrix(train[col]))))
 
 test = get_features(test)
-#test.to_csv('test.csv', index=False)
+
 test_features = pd.read_csv("C:\\Quora\\test_features.csv")
 test_features.drop(['question1','question2'],axis=1,inplace=True)
 test = pd.concat([test,test_features], axis=1)
+test.to_csv('test_XGB.csv', index=False)
 
 sub = pd.DataFrame()
 sub['test_id'] = test['test_id']
