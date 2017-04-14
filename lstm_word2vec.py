@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Apr 14 09:48:57 2017
+
+@author: shadab alam
+"""
+
 '''
 Single model may achieve LB scores at around 0.29+ ~ 0.30+
 Average ensembles can easily get 0.28+ or less
@@ -14,20 +21,18 @@ import csv
 import codecs
 import numpy as np
 import pandas as pd
-
 from nltk.corpus import stopwords
 from nltk.stem import SnowballStemmer
 from string import punctuation
-
+import keras
 from gensim.models import KeyedVectors
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
 from keras.layers import Dense, Input, LSTM, Embedding, Dropout, Activation
-from keras.layers.merge import concatenate
+#from keras.layers.merge import concatenate #using merge with concat option
 from keras.models import Model
 from keras.layers.normalization import BatchNormalization
 from keras.callbacks import EarlyStopping, ModelCheckpoint
-
 import sys
 reload(sys)
 sys.setdefaultencoding('utf-8')
@@ -35,7 +40,7 @@ sys.setdefaultencoding('utf-8')
 ########################################
 ## set directories and parameters ##
 ########################################
-BASE_DIR = '../input/'
+BASE_DIR = 'C:/Quora/'
 EMBEDDING_FILE = BASE_DIR + 'GoogleNews-vectors-negative300.bin'
 TRAIN_DATA_FILE = BASE_DIR + 'train.csv'
 TEST_DATA_FILE = BASE_DIR + 'test.csv'
@@ -85,6 +90,60 @@ def text_to_wordlist(text, remove_stopwords=False, stem_words=False):
     text = " ".join(text)
 
     # Clean the text
+    text = re.sub(r"[^A-Za-z0-9]", " ", text)
+    text = re.sub(r"what's", "", text)
+    text = re.sub(r"What's", "", text)
+    text = re.sub(r"\'s", " ", text)
+    text = re.sub(r"\'ve", " have ", text)
+    text = re.sub(r"can't", "cannot ", text)
+    text = re.sub(r"n't", " not ", text)
+    text = re.sub(r"I'm", "I am", text)
+    text = re.sub(r" m ", " am ", text)
+    text = re.sub(r"\'re", " are ", text)
+    text = re.sub(r"\'d", " would ", text)
+    text = re.sub(r"\'ll", " will ", text)
+    text = re.sub(r"\0k ", "0000 ", text)
+    text = re.sub(r" e g ", " eg ", text)
+    text = re.sub(r" b g ", " bg ", text)
+    text = re.sub(r"\0s", "0", text)
+    text = re.sub(r" 9 11 ", "911", text)
+    text = re.sub(r"e-mail", "email", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    text = re.sub(r"quikly", "quickly", text)
+    text = re.sub(r" usa ", " America ", text)
+    text = re.sub(r" USA ", " America ", text)
+    text = re.sub(r" u s ", " America ", text)
+    text = re.sub(r" uk ", " England ", text)
+    text = re.sub(r" UK ", " England ", text)
+    text = re.sub(r"india", "India", text)
+    text = re.sub(r"china", "China", text)
+    text = re.sub(r"chinese", "Chinese", text) 
+    text = re.sub(r"imrovement", "improvement", text)
+    text = re.sub(r"intially", "initially", text)
+    text = re.sub(r"quora", "Quora", text)
+    text = re.sub(r" dms ", "direct messages ", text)  
+    text = re.sub(r"demonitization", "demonetization", text) 
+    text = re.sub(r"actived", "active", text)
+    text = re.sub(r"kms", " kilometers ", text)
+    text = re.sub(r"KMs", " kilometers ", text)
+    text = re.sub(r" cs ", " computer science ", text) 
+    text = re.sub(r" upvotes ", " up votes ", text)
+    text = re.sub(r" iPhone ", " phone ", text)
+    text = re.sub(r"\0rs ", " rs ", text) 
+    text = re.sub(r"calender", "calendar", text)
+    text = re.sub(r"ios", "operating system", text)
+    text = re.sub(r"gps", "GPS", text)
+    text = re.sub(r"gst", "GST", text)
+    text = re.sub(r"programing", "programming", text)
+    text = re.sub(r"bestfriend", "best friend", text)
+    text = re.sub(r"dna", "DNA", text)
+    text = re.sub(r"III", "3", text) 
+    text = re.sub(r"the US", "America", text)
+    text = re.sub(r"Astrology", "astrology", text)
+    text = re.sub(r"Method", "method", text)
+    text = re.sub(r"Find", "find", text) 
+    text = re.sub(r"banglore", "Banglore", text)
+    text = re.sub(r" J K ", " JK ", text)    
     text = re.sub(r"[^A-Za-z0-9^,!.\/'+-=]", " ", text)
     text = re.sub(r"what's", "what is ", text)
     text = re.sub(r"\'s", " ", text)
@@ -128,6 +187,7 @@ def text_to_wordlist(text, remove_stopwords=False, stem_words=False):
 texts_1 = [] 
 texts_2 = []
 labels = []
+#Read a row go the the column of interest which are question1 on position-3 and question2 on position-4
 with codecs.open(TRAIN_DATA_FILE, encoding='utf-8') as f:
     reader = csv.reader(f, delimiter=',')
     header = next(reader)
@@ -140,6 +200,7 @@ print('Found %s texts in train.csv' % len(texts_1))
 test_texts_1 = []
 test_texts_2 = []
 test_ids = []
+#Read a row go the the column of interest which are question1 on position-3 and question2 on position-4
 with codecs.open(TEST_DATA_FILE, encoding='utf-8') as f:
     reader = csv.reader(f, delimiter=',')
     header = next(reader)
@@ -149,9 +210,11 @@ with codecs.open(TEST_DATA_FILE, encoding='utf-8') as f:
         test_ids.append(values[0])
 print('Found %s texts in test.csv' % len(test_texts_1))
 
-tokenizer = Tokenizer(num_words=MAX_NB_WORDS)
+#Create tokens from texts
+tokenizer = Tokenizer(nb_words=MAX_NB_WORDS)
 tokenizer.fit_on_texts(texts_1 + texts_2 + test_texts_1 + test_texts_2)
 
+#Convert tokens into indexs
 sequences_1 = tokenizer.texts_to_sequences(texts_1)
 sequences_2 = tokenizer.texts_to_sequences(texts_2)
 test_sequences_1 = tokenizer.texts_to_sequences(test_texts_1)
@@ -171,7 +234,7 @@ test_data_2 = pad_sequences(test_sequences_2, maxlen=MAX_SEQUENCE_LENGTH)
 test_ids = np.array(test_ids)
 
 ########################################
-## prepare embeddings
+## prepare embeddings: iterate over word index and word - at the index save word2vec
 ########################################
 print('Preparing embedding matrix')
 
@@ -212,7 +275,7 @@ embedding_layer = Embedding(nb_words,
         weights=[embedding_matrix],
         input_length=MAX_SEQUENCE_LENGTH,
         trainable=False)
-lstm_layer = LSTM(num_lstm, dropout=rate_drop_lstm, recurrent_dropout=rate_drop_lstm)
+lstm_layer = LSTM(num_lstm, dropout_W=rate_drop_lstm, dropout_U=rate_drop_lstm)
 
 sequence_1_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
 embedded_sequences_1 = embedding_layer(sequence_1_input)
@@ -222,7 +285,7 @@ sequence_2_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
 embedded_sequences_2 = embedding_layer(sequence_2_input)
 y1 = lstm_layer(embedded_sequences_2)
 
-merged = concatenate([x1, y1])
+merged = keras.layers.merge([x1, y1], mode='concat')
 merged = Dropout(rate_drop_dense)(merged)
 merged = BatchNormalization()(merged)
 
@@ -243,8 +306,8 @@ else:
 ########################################
 ## train the model
 ########################################
-model = Model(inputs=[sequence_1_input, sequence_2_input], \
-        outputs=preds)
+model = Model(input=[sequence_1_input, sequence_2_input], \
+        output=preds)
 model.compile(loss='binary_crossentropy',
         optimizer='nadam',
         metrics=['acc'])
@@ -257,7 +320,7 @@ model_checkpoint = ModelCheckpoint(bst_model_path, save_best_only=True, save_wei
 
 hist = model.fit([data_1_train, data_2_train], labels_train, \
         validation_data=([data_1_val, data_2_val], labels_val, weight_val), \
-        epochs=200, batch_size=2048, shuffle=True, \
+        nb_epoch=20, batch_size=2048, shuffle=True, verbose=1,\
         class_weight=class_weight, callbacks=[early_stopping, model_checkpoint])
 
 model.load_weights(bst_model_path)
