@@ -177,8 +177,25 @@ test["question2"]=test_texts_2
 tfidf = TfidfVectorizer(stop_words='english', ngram_range=(1, 1))
 #cvect = CountVectorizer(stop_words='english', ngram_range=(1, 1))
 tfidf_txt = pd.Series(texts_1 + texts_2 + test_texts_1 + test_texts_2).astype(str)
+tr_qs = pd.Series(texts_1 + texts_2)
 tfidf.fit_transform(tfidf_txt)
 #cvect.fit_transform(tfidf_txt)
+from collections import Counter
+
+# If a word appears only once, we ignore it completely (likely a typo)
+# Epsilon defines a smoothing constant, which makes the effect of extremely rare words smaller
+def get_weight(count, eps=10000, min_count=2):
+    if count < min_count:
+        return 0
+    else:
+        return 1 / (count + eps)
+
+eps = 5000 
+words = (" ".join(tr_qs)).lower().split()
+counts = Counter(words)
+weights = {word: get_weight(count) for word, count in counts.items()}
+
+
 del tfidf_txt,test_texts_1,test_texts_2,texts_1,texts_2
 
 a = 0.165 / 0.37
@@ -242,7 +259,24 @@ def word_match_begin_end(row):
         R= 5 
     #print("R=",R)
     return R
-
+def tfidf_word_match_share(row):
+    q1words = {}
+    q2words = {}
+    for word in str(row['question1']).lower().split():
+        if word not in stops:
+            q1words[word] = 1
+    for word in str(row['question2']).lower().split():
+        if word not in stops:
+            q2words[word] = 1
+    if len(q1words) == 0 or len(q2words) == 0:
+        # The computer-generated chaff includes a few questions that are nothing but stopwords
+        return 0
+    
+    shared_weights = [weights.get(w, 0) for w in q1words.keys() if w in q2words] + [weights.get(w, 0) for w in q2words.keys() if w in q1words]
+    total_weights = [weights.get(w, 0) for w in q1words] + [weights.get(w, 0) for w in q2words]
+    
+    R = np.sum(shared_weights) / np.sum(total_weights)
+    return R
 def get_features(df_features):
     print('nouns...')
     #df_features['question1_nouns'] = df_features.question1.map(lambda x: [w for w, t in nltk.pos_tag(nltk.word_tokenize(str(x).lower())) if t[:1] in ['N']])
@@ -263,21 +297,23 @@ def get_features(df_features):
     print('word match...')
     df_features['z_word_match'] = df_features.apply(word_match_share, axis=1, raw=True)
     df_features['magic_feature'] = df_features.apply(word_match_begin_end, axis=1, raw=True)
-    print('tfidf...z_tfidf_sum1')
-    df_features['z_tfidf_sum1'] = df_features.question1.map(lambda x: np.sum(tfidf.transform([str(x)]).data))
-    print('tfidf...z_tfidf_sum2')
-    df_features['z_tfidf_sum2'] = df_features.question2.map(lambda x: np.sum(tfidf.transform([str(x)]).data))
-    print('tfidf...z_tfidf_mean1')
-    df_features['z_tfidf_mean1'] = df_features.question1.map(lambda x: np.mean(tfidf.transform([str(x)]).data))
-    print('tfidf...z_tfidf_mean2')
-    df_features['z_tfidf_mean2'] = df_features.question2.map(lambda x: np.mean(tfidf.transform([str(x)]).data))
-    print('tfidf...z_tfidf_len1')
-    df_features['z_tfidf_len1'] = df_features.question1.map(lambda x: len(tfidf.transform([str(x)]).data))
-    print('tfidf...z_tfidf_len2')
-    df_features['z_tfidf_len2'] = df_features.question2.map(lambda x: len(tfidf.transform([str(x)]).data))
+    df_features['magic_feature_'] = df_features.apply(tfidf_word_match_share, axis=1, raw=True)
+#    print('tfidf...z_tfidf_sum1')
+#    df_features['z_tfidf_sum1'] = df_features.question1.map(lambda x: np.sum(tfidf.transform([str(x)]).data))
+#    print('tfidf...z_tfidf_sum2')
+#    df_features['z_tfidf_sum2'] = df_features.question2.map(lambda x: np.sum(tfidf.transform([str(x)]).data))
+#    print('tfidf...z_tfidf_mean1')
+#    df_features['z_tfidf_mean1'] = df_features.question1.map(lambda x: np.mean(tfidf.transform([str(x)]).data))
+#    print('tfidf...z_tfidf_mean2')
+#    df_features['z_tfidf_mean2'] = df_features.question2.map(lambda x: np.mean(tfidf.transform([str(x)]).data))
+#    print('tfidf...z_tfidf_len1')
+#    df_features['z_tfidf_len1'] = df_features.question1.map(lambda x: len(tfidf.transform([str(x)]).data))
+#    print('tfidf...z_tfidf_len2')
+#    df_features['z_tfidf_len2'] = df_features.question2.map(lambda x: len(tfidf.transform([str(x)]).data))
     return df_features.fillna(0.0)
 
 #train['magic_feature'] = train.apply(word_match_begin_end, axis=1, raw=True)
+
 train = get_features(train)
 train_features = pd.read_csv("C:\\Quora\\train_features.csv")
 train_features.drop(['question1','question2'],axis=1,inplace=True)
@@ -286,7 +322,7 @@ train.to_csv('train_XGB.csv', index=False)
 
 
 
-col = [c for c in train.columns if c[:1]=='z']
+col = [c for c in train.columns if c not in ['is_duplicate','question1','question2','id','qid1','qid2']]
 #
 #pos_train = train[train['is_duplicate'] == 1]
 #neg_train = train[train['is_duplicate'] == 0]
@@ -314,7 +350,7 @@ params["seed"] = 1632
 d_train = xgb.DMatrix(x_train, label=y_train)
 d_valid = xgb.DMatrix(x_valid, label=y_valid)
 watchlist = [(d_train, 'train'), (d_valid, 'valid')]
-bst = xgb.train(params, d_train, 500000, watchlist, early_stopping_rounds=500, verbose_eval=100,feval = kappa) #change to higher #s
+bst = xgb.train(params, d_train, 500000, watchlist, early_stopping_rounds=500, verbose_eval=1,feval = kappa) #change to higher #s
 print(log_loss(train.is_duplicate, bst.predict(xgb.DMatrix(train[col]))))
 
 test = get_features(test)
