@@ -4,12 +4,13 @@ os.environ['PATH'] = mingw_path + ';' + os.environ['PATH']
 
 import pandas as pd
 import numpy as np
-#import nltk
+import nltk
 from collections import Counter
 #from nltk.corpus import stopwords
 
 from nltk.corpus import stopwords
 from nltk.stem import SnowballStemmer
+from sklearn import preprocessing
 from sklearn.metrics import log_loss
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from scipy.optimize import minimize
@@ -21,15 +22,105 @@ import difflib
 import re
 import codecs
 from nltk.stem import SnowballStemmer
+from sklearn.metrics.pairwise import cosine_similarity 
+from scipy.spatial.distance import cosine
+from gensim.models import KeyedVectors
+from collections import Counter
+from sklearn.decomposition import PCA
+#from nltk.tag.perceptron import PerceptronTagger
+
 import csv
 import sys
 reload(sys)
 sys.setdefaultencoding('utf-8')
-
+#tagger = PerceptronTagger()
 BASE_DIR = 'C:/Quora/'
 EMBEDDING_FILE = BASE_DIR + 'GoogleNews-vectors-negative300.bin'
-TRAIN_DATA_FILE = BASE_DIR + 'train.csv'
+TRAIN_DATA_FILE = BASE_DIR + 'train_additional_v04232017.csv'
 TEST_DATA_FILE = BASE_DIR + 'test.csv'
+A_CONSTANT = 0.0003  
+
+print('Indexing word vectors')
+stops = set(stopwords.words("english"))
+        
+word2vec = KeyedVectors.load_word2vec_format(EMBEDDING_FILE, \
+        binary=True)
+print('Found %s word vectors of word2vec' % len(word2vec.vocab))
+
+avg = np.array([0]*300).astype(np.float32) 
+  
+def parse_sent_word2vec(row):
+    try:
+        q1_text = str(row['question1']).lower().split()
+        q2_text = str(row['question2']).lower().split()
+        a1=[]
+        a2=[]
+        for  word in   q1_text:
+            temp = avg
+            P_W = TOKEN_COUNT.get(word,0)/float(TOTAL_TOKEN)
+            try:
+                temp = word2vec.word_vec(word)*(A_CONSTANT/(A_CONSTANT+P_W))
+            except:
+                continue
+                
+            a1.append(temp)
+        for  word in   q2_text:
+            temp = avg
+            P_W = TOKEN_COUNT.get(word,0)/float(TOTAL_TOKEN)
+            try:
+                temp = word2vec.word_vec(word)*(A_CONSTANT/(A_CONSTANT+P_W))
+            except:
+                continue
+            a2.append(temp)
+                
+            
+        
+        parsed_vector1= np.mean(np.array(a1),axis = 0)
+        parsed_vector2= np.mean(np.array(a2),axis = 0) 
+        if np.sum(parsed_vector1)==0 or np.sum(parsed_vector2)==0:
+            return -1
+         
+        parsed_vector1 = parsed_vector1 - pca.transform(parsed_vector1)
+       
+        parsed_vector2 = parsed_vector2 - pca.transform(parsed_vector2)
+    
+        #print (parsed_vector1)
+        #print (parsed_vector2)
+    except:
+        return -1
+    
+    #parsed_vector1= np.sum(np.array([word2vec.word_vec(word) for word in   q1_text]))   
+    #parsed_vector2= np.sum(np.array([word2vec.word_vec(word) for word in   q2_text])) 
+    
+    #print (parsed_vector1)
+    #print (parsed_vector2)
+    try:
+        cs = cosine(parsed_vector1,parsed_vector2)
+        #print (cs)
+    except:
+        return -2
+    
+    return cs
+    
+def getSentenceVector(row):
+    try:
+        q1_text = str(row).lower().split()   
+        a1=[]    
+        for  word in   q1_text:
+            temp = avg
+            P_W = TOKEN_COUNT.get(word,0)/float(TOTAL_TOKEN)
+            try:
+                temp = word2vec.word_vec(word)*(A_CONSTANT/(A_CONSTANT+P_W))
+            except:
+                continue
+            a1.append(temp)    
+        
+        parsed_vector1= np.mean(np.array(a1),axis = 0)
+    except:
+            return avg
+    return parsed_vector1
+
+    
 def text_to_wordlist(text, remove_stopwords=False, stem_words=False):
     # Clean the text, with the option to remove stopwords and to stem words.
     
@@ -145,11 +236,11 @@ with codecs.open(TRAIN_DATA_FILE, encoding='utf-8') as f:
     reader = csv.reader(f, delimiter=',')
     header = next(reader)
     for values in reader:
-        texts_1.append(text_to_wordlist(values[3]))
-        texts_2.append(text_to_wordlist(values[4]))
+        texts_1.append(text_to_wordlist(values[4]))
+        texts_2.append(text_to_wordlist(values[5]))
         if int(values[0])%1000==0:
             print ("Already processed %d train files!!!"%(int(values[0])))
-        labels.append(int(values[5]))
+        labels.append(int(values[1]))
 print('Found %s texts in train.csv' % len(texts_1))
 
 test_texts_1 = []
@@ -171,17 +262,50 @@ test = pd.read_csv(TEST_DATA_FILE)
 train["question1"]=texts_1
 train["question2"]=texts_2
 
+    
+    
+
 test["question1"]=test_texts_1
 test["question2"]=test_texts_2
 #
 tfidf = TfidfVectorizer(stop_words='english', ngram_range=(1, 1))
 #cvect = CountVectorizer(stop_words='english', ngram_range=(1, 1))
-tfidf_txt = pd.Series(texts_1 + texts_2 + test_texts_1 + test_texts_2).astype(str)
-tr_qs = pd.Series(texts_1 + texts_2)
-tfidf.fit_transform(tfidf_txt)
-#cvect.fit_transform(tfidf_txt)
-from collections import Counter
 
+
+
+tfidf_txt = pd.Series(texts_1 + texts_2 + test_texts_1 + test_texts_2).astype(str)
+tr_qs = pd.Series(train["question1"] + train["question2"])
+tfidf.fit_transform(tfidf_txt)
+temp = tfidf.transform(tfidf_txt)
+#cvect.fit_transform(tfidf_txt)
+tokens = " ".join(tfidf_txt.tolist()).split(" ")
+TOKEN_COUNT =Counter(tokens)
+TOTAL_TOKEN = len(tokens)
+del tokens
+
+arr_train_q1 = np.zeros(shape=(len(texts_1),300))
+c = 0
+for s in texts_1:
+    arr_train_q1[c] = getSentenceVector(s)
+    c = c+1
+arr_train_q2 = np.zeros(shape=(len(texts_1),300))
+c = 0
+for s in texts_2:
+    arr_train_q2[c] = getSentenceVector(s)
+    c = c+1
+
+
+print("Creating test word vectors")
+arr_test_q1 = np.zeros(shape=(len(test_texts_1),300))
+c = 0
+for s in test_texts_1:
+    arr_test_q1[c] = getSentenceVector(s)
+    c = c+1
+arr_test_q2 = np.zeros(shape=(len(test_texts_2),300))
+c = 0
+for s in test_texts_2:
+    arr_test_q2[c] = getSentenceVector(s)
+    c = c+1
 # If a word appears only once, we ignore it completely (likely a typo)
 # Epsilon defines a smoothing constant, which makes the effect of extremely rare words smaller
 def get_weight(count, eps=10000, min_count=2):
@@ -191,12 +315,86 @@ def get_weight(count, eps=10000, min_count=2):
         return 1 / (count + eps)
 
 eps = 5000 
-words = (" ".join(tr_qs)).lower().split()
-counts = Counter(words)
-weights = {word: get_weight(count) for word, count in counts.items()}
+weights = {word: get_weight(count) for word, count in TOKEN_COUNT.items()}
+
+def sen2Vec(s):
+    try:
+        q1_text = str(s).lower().split()
+        
+        a1=[]
+        
+        for  word in   q1_text:
+            temp = avg
+            P_W = TOKEN_COUNT.get(word,0)/float(TOTAL_TOKEN)
+            #print(word,P_W)
+            try:
+                temp = word2vec.word_vec(word)*(A_CONSTANT/(A_CONSTANT+P_W))
+            except:
+                continue
+            a1.append(temp)         
+        
+        parsed_vector1= np.mean(np.array(a1),axis = 0)   
+        #print(parsed_vector1)
+    except:
+        return None
+    return parsed_vector1
+del test_texts_1,test_texts_2,texts_1,texts_2  
+import gc
+gc.collect()
+
+sentence_vectors = []
+X = np.zeros(shape=(500000,300))
+X=X[~np.isnan(X).any(axis=1)]
+count = 0
+for s in tfidf_txt.tolist():
+    v = sen2Vec(s)
+    #print(v)
+    if v!=None and count <500000:
+        #sentence_vectors.append(v)
+        X[count] = v
+        count = count+1
 
 
-del tfidf_txt,test_texts_1,test_texts_2,texts_1,texts_2
+pca = PCA(n_components=1)
+pca.fit(X) 
+print(pca.explained_variance_ratio_) 
+
+arr_train_q1[np.isnan(arr_train_q1)]=0
+q1_delta = pca.transform(arr_train_q1)
+arr_train_q1 = arr_train_q1-q1_delta*arr_train_q1
+
+arr_train_q2[np.isnan(arr_train_q2)]=0
+q2_delta = pca.transform(arr_train_q2)
+arr_train_q2 = arr_train_q2-q2_delta*arr_train_q2
+
+train_angle = []
+for i in range(0,len(train)):
+    temp=cosine(arr_train_q1[i],arr_train_q2[i])
+    if temp <0.1 or temp >0.8:
+        print temp
+    train_angle.append(temp)
+    
+arr_test_q1[np.isnan(arr_test_q1)]=0
+q1_delta = pca.transform(arr_test_q1)
+arr_test_q1 = arr_test_q1-q1_delta*arr_test_q1
+
+arr_test_q2[np.isnan(arr_test_q2)]=0
+q2_delta = pca.transform(arr_test_q2)
+arr_test_q2 = arr_test_q2-q2_delta*arr_test_q2
+
+test_angle = []
+for i in range(0,len(test)):
+    temp=cosine(arr_test_q1[i],arr_test_q2[i])
+    if temp <0.1 or temp >0.9:
+        print temp
+    test_angle.append(temp)    
+
+train['cosine_similarity'] = train_angle
+test['cosine_similarity'] = test_angle
+del tfidf_txt,sentence_vectors,arr_train_q1,arr_train_q2,train_angle,arr_test_q2,arr_test_q1,test_angle
+
+
+
 
 a = 0.165 / 0.37
 b = (1 - 0.165) / (1 - 0.37)
@@ -277,11 +475,20 @@ def tfidf_word_match_share(row):
     
     R = np.sum(shared_weights) / np.sum(total_weights)
     return R
+def first_word(row):
+    try:
+        q1_text = str(row['question1']).lower().split()[0]
+        q2_text = str(row['question2']).lower().split()[0]
+        return q1_text+"_"+q2_text
+    except:
+        return "None_None"
+
+le = preprocessing.LabelEncoder()
 def get_features(df_features):
-    print('nouns...')
-    #df_features['question1_nouns'] = df_features.question1.map(lambda x: [w for w, t in nltk.pos_tag(nltk.word_tokenize(str(x).lower())) if t[:1] in ['N']])
-    #df_features['question2_nouns'] = df_features.question2.map(lambda x: [w for w, t in nltk.pos_tag(nltk.word_tokenize(str(x).lower())) if t[:1] in ['N']])
-    #df_features['z_noun_match'] = df_features.apply(lambda r: sum([1 for w in r.question1_nouns if w in r.question2_nouns]), axis=1)  #takes long
+#    print('nouns...')
+#    df_features['question1_nouns'] = df_features.question1.map(lambda x: [w for w, t in tagger.tag(nltk.word_tokenize(str(x).lower())) if t[:1] in ['N']])
+#    df_features['question2_nouns'] = df_features.question2.map(lambda x: [w for w, t in tagger.tag(nltk.word_tokenize(str(x).lower())) if t[:1] in ['N']])
+#    df_features['z_noun_match'] = df_features.apply(lambda r: sum([1 for w in r.question1_nouns if w in r.question2_nouns]), axis=1)  #takes long
     print('lengths...')
     
     df_features['z_len1'] = df_features.question1.map(lambda x: len(str(x)))
@@ -296,8 +503,24 @@ def get_features(df_features):
     df_features['z_match_ratio'] = df_features.apply(lambda r: diff_ratios(r.question1, r.question2), axis=1)  #takes long
     print('word match...')
     df_features['z_word_match'] = df_features.apply(word_match_share, axis=1, raw=True)
-    df_features['magic_feature'] = df_features.apply(word_match_begin_end, axis=1, raw=True)
-    df_features['magic_feature_'] = df_features.apply(tfidf_word_match_share, axis=1, raw=True)
+    df_features['z_magic_feature'] = df_features.apply(word_match_begin_end, axis=1, raw=True)
+    df_features['z_magic_feature_'] = df_features.apply(tfidf_word_match_share, axis=1, raw=True)
+    
+    z1 = tfidf.transform(df_features.question1)
+    z2 = tfidf.transform(df_features.question2)
+    print('tfidf...z_tfidf_sum1')
+
+    df_features['z_tfidf_sum1'] = z1.sum(axis = 1)
+    print('tfidf...z_tfidf_sum2')
+    df_features['z_tfidf_sum2'] = z2.sum(axis = 1)
+    df_features['z_tfidf_len1'] = z1.sign().sum(axis = 1)
+    df_features['z_tfidf_len2'] = z2.sign().sum(axis = 1)
+    df_features['z_tfidf_mean1'] = df_features['z_tfidf_sum1']/df_features['z_tfidf_len1']
+    df_features['z_tfidf_mean2'] = df_features['z_tfidf_sum2']/df_features['z_tfidf_len2']
+    
+    
+    
+    
 #    print('tfidf...z_tfidf_sum1')
 #    df_features['z_tfidf_sum1'] = df_features.question1.map(lambda x: np.sum(tfidf.transform([str(x)]).data))
 #    print('tfidf...z_tfidf_sum2')
@@ -312,21 +535,26 @@ def get_features(df_features):
 #    df_features['z_tfidf_len2'] = df_features.question2.map(lambda x: len(tfidf.transform([str(x)]).data))
     return df_features.fillna(0.0)
 
-#train['magic_feature'] = train.apply(word_match_begin_end, axis=1, raw=True)
-
+train['magic_feature'] = train.apply(word_match_begin_end, axis=1, raw=True)
 train = get_features(train)
 train_features = pd.read_csv("C:\\Quora\\train_features.csv")
 train_features.drop(['question1','question2'],axis=1,inplace=True)
 train = pd.concat([train,train_features], axis=1)
+print ("Super awesome feature")
+train['super_awesome_feature'] = train.apply(first_word, axis=1, raw=True)
+test_saf = test.apply(first_word, axis=1, raw=True)
+le.fit(train['super_awesome_feature'].tolist()+list(test_saf))
+train['super_awesome_feature'] = le.transform(train['super_awesome_feature'])
 train.to_csv('train_XGB.csv', index=False)
 
-
+#pd.to_pickle(train['super_awesome_feature'],"C:/Quora/train_super.pkl")
+#pd.to_pickle(train['z_magic_feature'] ,"C:/Quora/teain_magic1.pkl")
 
 col = [c for c in train.columns if c not in ['is_duplicate','question1','question2','id','qid1','qid2']]
 #
 #pos_train = train[train['is_duplicate'] == 1]
 #neg_train = train[train['is_duplicate'] == 0]
-#p = 0.165
+#p = 0.175
 #scale = ((len(pos_train) / (len(pos_train) + len(neg_train))) / p) - 1
 #while scale > 1:
 #    neg_train = pd.concat([neg_train, neg_train])
@@ -336,32 +564,52 @@ col = [c for c in train.columns if c not in ['is_duplicate','question1','questio
 
 x_train, x_valid, y_train, y_valid = train_test_split(train[col], train['is_duplicate'], test_size=0.2, random_state=0)
 
+#x_train = train[train.id>=80000]
+#y_train = x_train['is_duplicate']
+#x_train=x_train[col]
+#x_valid = train[train.id<80000]
+#y_valid = x_valid['is_duplicate']
+#x_valid=x_valid[col]
+
+
+
+
+
+
+
+
 params = {}
 params["objective"] = "binary:logistic"
 params['eval_metric'] = 'logloss'
-params["eta"] = 0.02
-params["subsample"] = 0.7
+params["eta"] = 0.1
+params["subsample"] = 0.9
 params["min_child_weight"] = 1
 params["colsample_bytree"] = 0.7
-params["max_depth"] = 4
+params["max_depth"] = 6
 params["silent"] = 1
 params["seed"] = 1632
 
 d_train = xgb.DMatrix(x_train, label=y_train)
 d_valid = xgb.DMatrix(x_valid, label=y_valid)
 watchlist = [(d_train, 'train'), (d_valid, 'valid')]
-bst = xgb.train(params, d_train, 500000, watchlist, early_stopping_rounds=500, verbose_eval=1,feval = kappa) #change to higher #s
+bst = xgb.train(params, d_train, 700000, watchlist, early_stopping_rounds=500, verbose_eval=100) #change to higher #s
 print(log_loss(train.is_duplicate, bst.predict(xgb.DMatrix(train[col]))))
 
+#test = get_features(test)
+test['magic_feature'] = test.apply(word_match_begin_end, axis=1, raw=True)
 test = get_features(test)
-
 test_features = pd.read_csv("C:\\Quora\\test_features.csv")
 test_features.drop(['question1','question2'],axis=1,inplace=True)
 test = pd.concat([test,test_features], axis=1)
+test['super_awesome_feature'] = test.apply(first_word, axis=1, raw=True)
+test['super_awesome_feature'] = le.transform(test['super_awesome_feature'])
 test.to_csv('test_XGB.csv', index=False)
+#pd.to_pickle(test['super_awesome_feature'] ,"C:/Quora/test_super.pkl")
+#pd.to_pickle(test['z_magic_feature'] ,"C:/Quora/test_magic1.pkl")
+
 
 sub = pd.DataFrame()
 sub['test_id'] = test['test_id']
 sub['is_duplicate'] = bst.predict(xgb.DMatrix(test[col]))
 
-sub.to_csv('z08_submission_xgb_01.csv', index=False)
+sub.to_csv('z08_submission_xgb_03.csv', index=False)
