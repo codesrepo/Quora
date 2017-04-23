@@ -344,7 +344,7 @@ gc.collect()
 
 sentence_vectors = []
 X = np.zeros(shape=(500000,300))
-X=X[~np.isnan(X).any(axis=1)]
+
 count = 0
 for s in tfidf_txt.tolist():
     v = sen2Vec(s)
@@ -356,6 +356,7 @@ for s in tfidf_txt.tolist():
 
 
 pca = PCA(n_components=1)
+X=X[~np.isnan(X).any(axis=1)]
 pca.fit(X) 
 print(pca.explained_variance_ratio_) 
 
@@ -371,7 +372,7 @@ train_angle = []
 for i in range(0,len(train)):
     temp=cosine(arr_train_q1[i],arr_train_q2[i])
     if temp <0.1 or temp >0.8:
-        print temp
+        #print temp
     train_angle.append(temp)
     
 arr_test_q1[np.isnan(arr_test_q1)]=0
@@ -386,12 +387,12 @@ test_angle = []
 for i in range(0,len(test)):
     temp=cosine(arr_test_q1[i],arr_test_q2[i])
     if temp <0.1 or temp >0.9:
-        print temp
+        #print temp
     test_angle.append(temp)    
 
 train['cosine_similarity'] = train_angle
 test['cosine_similarity'] = test_angle
-del tfidf_txt,sentence_vectors,arr_train_q1,arr_train_q2,train_angle,arr_test_q2,arr_test_q1,test_angle
+del tfidf_txt,sentence_vectors,arr_train_q1,arr_train_q2,train_angle,arr_test_q2,arr_test_q1,test_angle,pca
 
 
 
