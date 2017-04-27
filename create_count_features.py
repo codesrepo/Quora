@@ -267,16 +267,8 @@ train["question2"]=texts_2
 
 test["question1"]=test_texts_1
 test["question2"]=test_texts_2
-#
-tfidf = TfidfVectorizer(stop_words='english', ngram_range=(1, 1))
-#cvect = CountVectorizer(stop_words='english', ngram_range=(1, 1))
-
-
 
 tfidf_txt = pd.Series(texts_1 + texts_2 + test_texts_1 + test_texts_2).astype(str)
-tr_qs = pd.Series(train["question1"] + train["question2"])
-tfidf.fit_transform(tfidf_txt)
-temp = tfidf.transform(tfidf_txt)
 qcount  =  Counter(tfidf_txt.tolist())
 
 train["question1c"]=train.question1.map(lambda x: qcount[x])
